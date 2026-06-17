@@ -1,5 +1,5 @@
 name: 'Storybook Visual Regression'
-description: 'Chromatic-style visual regression for Storybook, posted as a single auto-updating PR comment with an approval gate. Private-repo friendly, no external services.'
+description: 'Storybook visual regression posted inline on PRs'
 author: 'krystxf'
 branding:
   icon: 'eye'
