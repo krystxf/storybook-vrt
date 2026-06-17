@@ -83,3 +83,7 @@ Deleting (or editing out) an approval comment **revokes** it. Added/removed stor
   in branch protection (needs GitHub Pro or a public repo for private repositories).
 - Snapshot images accumulate on the `snapshot-branch`; delete that branch anytime to reclaim space
   (it's recreated on the next run).
+
+## Demo
+check out this [demo PR](https://github.com/krystxf/storybook-vrt-example/pull/14)
+<img width="1130" height="1690" alt="image" src="https://github.com/user-attachments/assets/4e5bb22a-a9d6-4dfd-8e91-727bdc53f177" />
