@@ -1,0 +1,119 @@
+name: 'Storybook Visual Regression'
+description: 'Chromatic-style visual regression for Storybook, posted as a single auto-updating PR comment with an approval gate. Private-repo friendly, no external services.'
+author: 'krystxf'
+branding:
+  icon: 'eye'
+  color: 'purple'
+
+inputs:
+  build-command:
+    description: 'Command that builds Storybook into static-dir (run for both head and base).'
+    default: 'npx storybook build'
+  static-dir:
+    description: 'Directory the build outputs to.'
+    default: 'storybook-static'
+  themes:
+    description: 'Comma-separated Storybook themes to capture (globals theme:<name>).'
+    default: 'light,dark'
+  min-diff-pixels:
+    description: 'Ignore diffs smaller than this many pixels.'
+    default: '20'
+  pixelmatch-threshold:
+    description: 'Per-pixel color sensitivity (0–1).'
+    default: '0.1'
+  ignore-story-names:
+    description: 'Comma-separated, case-insensitive story-name substrings to skip (composite stories).'
+    default: 'All Variants'
+  snapshot-branch:
+    description: 'Orphan branch images are committed to.'
+    default: 'vrt-snapshots'
+  github-token:
+    description: 'Token with contents:write, pull-requests:write, statuses:write.'
+    default: ${{ github.token }}
+
+runs:
+  using: 'composite'
+  steps:
+    # ---- pull_request: build head + base, diff ----
+    - name: Install screenshot deps
+      if: github.event_name == 'pull_request'
+      shell: bash
+      env:
+        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1' # postinstall skips; we install just chromium next
+      run: |
+        cd "${{ github.action_path }}"
+        npm ci --omit=dev --no-audit --no-fund
+        npx playwright install --with-deps chromium
+
+    - name: Screenshot & diff
+      if: github.event_name == 'pull_request'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        BUILD_COMMAND: ${{ inputs.build-command }}
+        STATIC_DIR: ${{ inputs.static-dir }}
+        THEMES: ${{ inputs.themes }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        MIN_DIFF_PIXELS: ${{ inputs.min-diff-pixels }}
+        PIXELMATCH_THRESHOLD: ${{ inputs.pixelmatch-threshold }}
+        VRT_IGNORE_STORY_NAMES: ${{ inputs.ignore-story-names }}
+        NODE_OPTIONS: --disable-warning=ExperimentalWarning
+      run: |
+        set -euo pipefail
+        # HEAD (the checked-out ref, typically the PR merge result)
+        eval "$BUILD_COMMAND"
+        node "$ACTION_PATH/scripts/capture.mts" --static "$STATIC_DIR" --out .vrt/head --themes "$THEMES"
+        # BASE: flip the working tree to base, rebuild, restore. Reuses the workspace's
+        # node_modules so the consumer's build-command resolves normally (no bin gymnastics).
+        ORIG="$(git rev-parse HEAD)"
+        git checkout -q --detach "$BASE_SHA"
+        eval "$BUILD_COMMAND"
+        node "$ACTION_PATH/scripts/capture.mts" --static "$STATIC_DIR" --out .vrt/base --themes "$THEMES"
+        git checkout -q --detach "$ORIG"
+        node "$ACTION_PATH/scripts/diff.mts" --base .vrt/base --head .vrt/head --out .vrt/out
+
+    - name: Publish snapshots
+      id: publish
+      if: github.event_name == 'pull_request'
+      shell: bash
+      env:
+        PR: ${{ github.event.pull_request.number }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        SNAP_BRANCH: ${{ inputs.snapshot-branch }}
+      run: bash "${{ github.action_path }}/scripts/publish-snapshots.sh"
+
+    - name: Comment & set status
+      if: github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        SNAP_SHA: ${{ steps.publish.outputs.snap_sha }}
+        SNAP_PATH_PREFIX: ${{ steps.publish.outputs.prefix }}
+        NODE_OPTIONS: --disable-warning=ExperimentalWarning
+      run: node "${{ github.action_path }}/scripts/evaluate.mts"
+
+    # ---- issue_comment: re-evaluate the approval gate (no re-screenshot) ----
+    - name: Re-evaluate approvals
+      if: github.event_name == 'issue_comment'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ github.event.issue.number }}
+        SNAP_BRANCH: ${{ inputs.snapshot-branch }}
+        NODE_OPTIONS: --disable-warning=ExperimentalWarning
+      run: |
+        set -euo pipefail
+        HEAD_SHA=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)
+        PREFIX="pr-${PR_NUMBER}/${HEAD_SHA}"
+        mkdir -p .vrt/out
+        if gh api "repos/$GITHUB_REPOSITORY/contents/${PREFIX}/report.json?ref=${SNAP_BRANCH}" \
+             -H "Accept: application/vnd.github.raw" > .vrt/out/report.json 2>/dev/null && [ -s .vrt/out/report.json ]; then
+          SNAP_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/${SNAP_BRANCH}" --jq .object.sha)
+          HEAD_SHA="$HEAD_SHA" SNAP_SHA="$SNAP_SHA" SNAP_PATH_PREFIX="$PREFIX" \
+            node "${{ github.action_path }}/scripts/evaluate.mts"
+        else
+          echo "No snapshot report for ${PREFIX}; nothing to approve."
+        fi
