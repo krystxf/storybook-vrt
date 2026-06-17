@@ -1,0 +1,18 @@
+{
+  // Type-check only — the scripts run via Node's native type stripping, so we keep the
+  // `.mts` import extensions (allowImportingTsExtensions) and never emit.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node"]
+  },
+  "include": ["scripts/**/*.mts"]
+}
