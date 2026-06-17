@@ -42,6 +42,7 @@ jobs:
       - uses: krystxf/storybook-vrt@v1
         with:
           build-command: pnpm build-storybook
+          ignore-story-names: "All Variants" # optional; comma-separated, case-insensitive
 ```
 
 That's it. On each push the action screenshots every story (light + dark) for the PR and its
