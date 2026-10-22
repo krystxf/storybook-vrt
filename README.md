@@ -7,6 +7,10 @@ attachments and are never committed to Git.
 
 ## Quickstart
 
+Create a repository Actions secret named `VRT_ATTACHMENT_TOKEN` containing a user PAT or OAuth
+token with push access to the repository. The built-in Actions `GITHUB_TOKEN` cannot upload
+attachments. Keep this token scoped to repositories that need screenshot publishing.
+
 Add one workflow to your repo (e.g. `.github/workflows/visual-regression.yml`):
 
 ```yaml
@@ -40,7 +44,7 @@ jobs:
           node-version: 24         # >= 24 (or >= 22.18) for native TS type stripping
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - uses: krystxf/storybook-vrt@v1
+      - uses: krystxf/storybook-vrt@v2
         with:
           attachment-token: ${{ secrets.VRT_ATTACHMENT_TOKEN }}
           build-command: pnpm build-storybook
@@ -73,7 +77,7 @@ Deleting (or editing out) an approval comment **revokes** it. Added/removed stor
 | `pixelmatch-threshold` | `0.1` | Per-pixel color sensitivity (0–1). |
 | `ignore-story-names` | `All Variants` | Comma-separated, case-insensitive story-name substrings to skip. |
 | `attachment-token` | required | User PAT or OAuth token with repository push access for image uploads. |
-| `github-token` | `${{ github.token }}` | Token with `pull-requests`/`statuses` write, `actions` read,. |
+| `github-token` | `${{ github.token }}` | Token with `pull-requests`/`statuses` write, `actions` read. |
 
 ## Requirements & notes
 
@@ -94,6 +98,16 @@ Deleting (or editing out) an approval comment **revokes** it. Added/removed stor
   repository's artifact retention policy; after expiry, rerun visual regression before approving.
 - Fork PR workflows normally lack the secrets and write permissions required to publish reports.
 
+## Migrating from v1
+
+- Use `krystxf/storybook-vrt@v2` and pass `attachment-token: ${{ secrets.VRT_ATTACHMENT_TOKEN }}`.
+- Remove the `snapshot-branch` input. Change `contents: write` to `contents: read` and add `actions: read`.
+- Merge the updated workflow into the default branch so approval comments use artifact reports.
+- Rerun open PR checks to create reports and attachment URLs, then delete the old `vrt-snapshots`
+  branch (or your configured snapshot branch). Old comments pointing to those snapshots may lose images.
+- Artifacts are retained according to repository settings. Rerun checks if the report has expired.
+
 ## Demo
-check out this [demo PR](https://github.com/krystxf/storybook-vrt-example/pull/14)
-<img width="1130" height="1690" alt="image" src="https://github.com/user-attachments/assets/4e5bb22a-a9d6-4dfd-8e91-727bdc53f177" />
+
+See the [attachment-based demo PR](https://github.com/krystxf/storybook-vrt-example/pull/21)
+for before/after/diff images hosted as GitHub attachments.
