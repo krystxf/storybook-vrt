@@ -2,8 +2,7 @@
 
 A reusable GitHub Action for **Chromatic-style visual regression on Storybook** — posted as a
 **single, auto-updating PR comment** with before/after/diff images, gated by comment approval.
-No external services; works in **private repos**. Images are uploaded as GitHub comment
-attachments and are never committed to Git.
+No external services; works in **private repos**.
 
 ## Quickstart
 
@@ -109,5 +108,5 @@ Deleting (or editing out) an approval comment **revokes** it. Added/removed stor
 
 ## Demo
 
-See the [attachment-based demo PR](https://github.com/krystxf/storybook-vrt-example/pull/21)
-for before/after/diff images hosted as GitHub attachments.
+See the [demo PR](https://github.com/krystxf/storybook-vrt-example/pull/21)
+for before/after/diff comparisons and comment-based approvals.
