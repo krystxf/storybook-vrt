@@ -1,6 +1,6 @@
 {
   "name": "storybook-vrt",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "Screenshot/diff/comment scripts for the Storybook Visual Regression GitHub Action.",
   "license": "MIT",

@@ -33,6 +33,7 @@ export interface ReportItem extends Story {
 }
 
 export interface Report {
+  imageUrls?: Record<string, string>;
   totals: Record<DiffStatus, number>;
   items: ReportItem[];
   minPixels: number;
