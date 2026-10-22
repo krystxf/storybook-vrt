@@ -8,7 +8,7 @@
 //
 // Env: GITHUB_TOKEN, GITHUB_REPOSITORY, PR_NUMBER            (required)
 //      HEAD_SHA (commit the status attaches to; falls back to COMMIT_SHA)
-//      SNAP_SHA, SNAP_PATH_PREFIX, GITHUB_SERVER_URL, REPORT, DRY_RUN=1
+//      GITHUB_SERVER_URL, REPORT, DRY_RUN=1
 import fs from 'node:fs';
 import type { Report, ReportItem } from './lib.mts';
 
@@ -114,13 +114,15 @@ async function setStatus(state: 'success' | 'failure', description: string, targ
 const reportPath = process.env.REPORT || '.vrt/out/report.json';
 const report = JSON.parse(fs.readFileSync(reportPath, 'utf8')) as Report;
 const { totals, items } = report;
-const snapSha = process.env.SNAP_SHA || '';
-const prefix = (process.env.SNAP_PATH_PREFIX || '').replace(/\/+$/, '');
 const short = headSha ? headSha.slice(0, 7) : '';
 const MAX_RENDER = parseInt(process.env.MAX_RENDER || '60', 10);
 const MAX_OPEN = parseInt(process.env.MAX_OPEN || '8', 10);
 
-const imgUrl = (f: string): string => `${server}/${repo}/raw/${snapSha}/${prefix}/${f}`;
+const imgUrl = (f: string): string => {
+  const url = report.imageUrls?.[f];
+  if (!url && !process.env.DRY_RUN) throw new Error(`Missing attachment URL: ${f}`);
+  return url || f;
+};
 const img = (f: string, w = 260): string => `<img src="${imgUrl(f)}" width="${w}" alt="">`;
 const titleOf = (i: ReportItem): string => `${i.title} › ${i.name} · <i>${i.theme}</i>`;
 const tableRow = (i: ReportItem): string =>

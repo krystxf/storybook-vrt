@@ -24,11 +24,11 @@ inputs:
   ignore-story-names:
     description: 'Comma-separated, case-insensitive story-name substrings to skip (composite stories).'
     default: 'All Variants'
-  snapshot-branch:
-    description: 'Orphan branch images are committed to.'
-    default: 'vrt-snapshots'
+  attachment-token:
+    description: 'User token (PAT or OAuth) with repository push access; Actions GITHUB_TOKEN is unsupported for uploads.'
+    required: true
   github-token:
-    description: 'Token with contents:write, pull-requests:write, statuses:write.'
+    description: 'Token with pull-requests:write, statuses:write, actions:read.'
     default: ${{ github.token }}
 
 runs:
@@ -72,15 +72,21 @@ runs:
         git checkout -q --detach "$ORIG"
         node "$ACTION_PATH/scripts/diff.mts" --base .vrt/base --head .vrt/head --out .vrt/out
 
-    - name: Publish snapshots
-      id: publish
+    - name: Upload screenshot attachments
       if: github.event_name == 'pull_request'
       shell: bash
       env:
-        PR: ${{ github.event.pull_request.number }}
-        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        SNAP_BRANCH: ${{ inputs.snapshot-branch }}
-      run: bash "${{ github.action_path }}/scripts/publish-snapshots.sh"
+        GH_TOKEN: ${{ inputs.attachment-token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: node "${{ github.action_path }}/scripts/publish-attachments.mts"
+
+    - name: Save report for approval checks
+      if: github.event_name == 'pull_request'
+      uses: actions/upload-artifact@v4
+      with:
+        name: vrt-report-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+        path: .vrt/out/report.json
+        overwrite: true
 
     - name: Comment & set status
       if: github.event_name == 'pull_request'
@@ -89,10 +95,16 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        SNAP_SHA: ${{ steps.publish.outputs.snap_sha }}
-        SNAP_PATH_PREFIX: ${{ steps.publish.outputs.prefix }}
         NODE_OPTIONS: --disable-warning=ExperimentalWarning
       run: node "${{ github.action_path }}/scripts/evaluate.mts"
+
+    - name: Remove temporary upload comments
+      if: github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.attachment-token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: node "${{ github.action_path }}/scripts/publish-attachments.mts" --cleanup
 
     # ---- issue_comment: re-evaluate the approval gate (no re-screenshot) ----
     - name: Re-evaluate approvals
@@ -102,18 +114,17 @@ runs:
         GH_TOKEN: ${{ inputs.github-token }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         PR_NUMBER: ${{ github.event.issue.number }}
-        SNAP_BRANCH: ${{ inputs.snapshot-branch }}
         NODE_OPTIONS: --disable-warning=ExperimentalWarning
       run: |
         set -euo pipefail
         HEAD_SHA=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)
-        PREFIX="pr-${PR_NUMBER}/${HEAD_SHA}"
-        mkdir -p .vrt/out
-        if gh api "repos/$GITHUB_REPOSITORY/contents/${PREFIX}/report.json?ref=${SNAP_BRANCH}" \
-             -H "Accept: application/vnd.github.raw" > .vrt/out/report.json 2>/dev/null && [ -s .vrt/out/report.json ]; then
-          SNAP_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/${SNAP_BRANCH}" --jq .object.sha)
-          HEAD_SHA="$HEAD_SHA" SNAP_SHA="$SNAP_SHA" SNAP_PATH_PREFIX="$PREFIX" \
-            node "${{ github.action_path }}/scripts/evaluate.mts"
+        ARTIFACT_ID=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=vrt-report-${PR_NUMBER}-${HEAD_SHA}&per_page=100" \
+          --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | last | .id // empty')
+        if [ -n "$ARTIFACT_ID" ]; then
+          mkdir -p .vrt/out
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > .vrt/report.zip
+          unzip -oq .vrt/report.zip -d .vrt/out
+          HEAD_SHA="$HEAD_SHA" node "${{ github.action_path }}/scripts/evaluate.mts"
         else
-          echo "No snapshot report for ${PREFIX}; nothing to approve."
+          echo "No retained report for PR ${PR_NUMBER} at ${HEAD_SHA}; rerun visual regression to evaluate approvals."
         fi

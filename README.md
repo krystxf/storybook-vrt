@@ -2,8 +2,8 @@
 
 A reusable GitHub Action for **Chromatic-style visual regression on Storybook** — posted as a
 **single, auto-updating PR comment** with before/after/diff images, gated by comment approval.
-No external services; works in **private repos** (images are committed to a branch in your own
-repo and embedded via `github.com/<repo>/raw/<sha>/…` URLs, which render for repo members).
+No external services; works in **private repos**. Images are uploaded as GitHub comment
+attachments and are never committed to Git.
 
 ## Quickstart
 
@@ -18,7 +18,8 @@ on:
     types: [created, edited, deleted]
 
 permissions:
-  contents: write       # push diff images to the snapshot branch
+  contents: read       # check out and build both commits
+  actions: read        # retrieve reports for approval checks
   pull-requests: write  # upsert the sticky comment
   statuses: write       # set the blocking commit status
 
@@ -41,6 +42,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - uses: krystxf/storybook-vrt@v1
         with:
+          attachment-token: ${{ secrets.VRT_ATTACHMENT_TOKEN }}
           build-command: pnpm build-storybook
           ignore-story-names: "All Variants" # optional; comma-separated, case-insensitive
 ```
@@ -70,8 +72,8 @@ Deleting (or editing out) an approval comment **revokes** it. Added/removed stor
 | `min-diff-pixels` | `20` | Ignore diffs smaller than this many pixels. |
 | `pixelmatch-threshold` | `0.1` | Per-pixel color sensitivity (0–1). |
 | `ignore-story-names` | `All Variants` | Comma-separated, case-insensitive story-name substrings to skip. |
-| `snapshot-branch` | `vrt-snapshots` | Orphan branch the diff images live on. |
-| `github-token` | `${{ github.token }}` | Token with `contents`/`pull-requests`/`statuses` write. |
+| `attachment-token` | required | User PAT or OAuth token with repository push access for image uploads. |
+| `github-token` | `${{ github.token }}` | Token with `pull-requests`/`statuses` write, `actions` read,. |
 
 ## Requirements & notes
 
@@ -82,8 +84,15 @@ Deleting (or editing out) an approval comment **revokes** it. Added/removed stor
   on `main` before approvals take effect.
 - To make the gate *hard-block* merges, add the **`visual-regression`** status as a required check
   in branch protection (needs GitHub Pro or a public repo for private repositories).
-- Snapshot images accumulate on the `snapshot-branch`; delete that branch anytime to reclaim space
-  (it's recreated on the next run).
+- Create a `VRT_ATTACHMENT_TOKEN` repository secret containing a user PAT with repository push access.
+  GitHub App installation tokens, including Actions `GITHUB_TOKEN`, cannot upload attachments.
+  The separate `github-token` input still defaults to the normal workflow token for comments and statuses.
+- GitHub CLI ≥ 2.99 with `gh pr comment --attach` support is required. The publisher batches uploads
+  at 50 images per command and rejects images over 10 MiB.
+- Temporary upload comments are deleted only after the sticky report embeds their hosted image URLs.
+- Approval checks read an Actions report artifact for the exact PR head SHA. Reports follow the
+  repository's artifact retention policy; after expiry, rerun visual regression before approving.
+- Fork PR workflows normally lack the secrets and write permissions required to publish reports.
 
 ## Demo
 check out this [demo PR](https://github.com/krystxf/storybook-vrt-example/pull/14)
