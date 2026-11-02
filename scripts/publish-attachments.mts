@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import type { Report } from './lib.mts';
+import { setProgress } from './status.mts';
 
 const repo = process.env.GITHUB_REPOSITORY;
 const pr = process.env.PR_NUMBER;
@@ -38,15 +39,18 @@ if (!token || /^(ghs_|ghr_)/.test(token)) {
 const commentIds: string[] = [];
 fs.writeFileSync(commentsPath, '[]');
 report.imageUrls = {};
+const batchCount = Math.ceil(files.length / 50);
 for (let start = 0; start < files.length; start += 50) {
   const batch = files.slice(start, start + 50);
+  const progress = `batch ${start / 50 + 1}/${batchCount} (images ${start + 1}–${start + batch.length} of ${files.length})`;
+  await setProgress('pending', `Uploading images: ${progress}`);
   const localFiles = batch.map(file => path.resolve(path.dirname(reportPath), file));
   for (const file of localFiles) {
     if (fs.statSync(file).size > 10 * 1024 * 1024) throw new Error(`Image exceeds GitHub attachment limit: ${file}`);
   }
   const bodyFile = path.join(path.dirname(reportPath), 'attachments.md');
   // Collapse the images so the temporary upload comment stays compact in the PR timeline.
-  fs.writeFileSync(bodyFile, `<details><summary>Uploading ${batch.length} visual regression images…</summary>\n\n`
+  fs.writeFileSync(bodyFile, `<details><summary>Uploading visual regression images · ${progress}…</summary>\n\n`
     + localFiles.map((file, i) => `![vrt-${i}](${file})`).join('\n') + '\n\n</details>');
   let url: string;
   try {
@@ -74,3 +78,4 @@ for (let start = 0; start < files.length; start += 50) {
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
 }
 fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
+await setProgress('pending', 'Posting report…');
