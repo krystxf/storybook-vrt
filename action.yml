@@ -99,7 +99,7 @@ runs:
       run: node "${{ github.action_path }}/scripts/evaluate.mts"
 
     - name: Remove temporary upload comments
-      if: github.event_name == 'pull_request'
+      if: always() && github.event_name == 'pull_request' # also clean up after a failed or cancelled upload
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.attachment-token }}

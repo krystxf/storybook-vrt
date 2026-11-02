@@ -17,9 +17,19 @@ if (!cli(['pr', 'comment', '--help']).includes('--attach')) {
 }
 const commentsPath = path.join(path.dirname(reportPath), 'upload-comments.json');
 if (process.argv.includes('--cleanup')) {
+  // Also runs after a failed or cancelled job, so the upload step may never have started.
+  if (!fs.existsSync(commentsPath)) process.exit(0);
   const ids: string[] = JSON.parse(fs.readFileSync(commentsPath, 'utf8'));
-  for (const id of ids) cli(['api', '--method', 'DELETE', `repos/${repo}/issues/comments/${id}`]);
-  process.exit(0);
+  let failed = 0;
+  for (const id of ids) {
+    try {
+      cli(['api', '--method', 'DELETE', `repos/${repo}/issues/comments/${id}`]);
+    } catch (err) {
+      failed++;
+      console.error(`Cannot delete upload comment ${id}: ${(err as Error).message}`);
+    }
+  }
+  process.exit(failed ? 1 : 0);
 }
 const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '';
 if (!token || /^(ghs_|ghr_)/.test(token)) {
@@ -38,8 +48,17 @@ for (let start = 0; start < files.length; start += 50) {
   // Collapse the images so the temporary upload comment stays compact in the PR timeline.
   fs.writeFileSync(bodyFile, `<details><summary>Uploading ${batch.length} visual regression images…</summary>\n\n`
     + localFiles.map((file, i) => `![vrt-${i}](${file})`).join('\n') + '\n\n</details>');
-  const url = cli(['pr', 'comment', pr, '--repo', repo, '--body-file', bodyFile,
-    ...localFiles.flatMap(file => ['--attach', file])]).trim();
+  let url: string;
+  try {
+    url = cli(['pr', 'comment', pr, '--repo', repo, '--body-file', bodyFile,
+      ...localFiles.flatMap(file => ['--attach', file])]).trim();
+  } catch (err) {
+    // gh can create the comment and still exit non-zero when one attachment fails.
+    // Record that comment so cleanup can remove it.
+    const failedId = String((err as { stdout?: string }).stdout ?? '').match(/#issuecomment-(\d+)/)?.[1];
+    if (failedId) fs.writeFileSync(commentsPath, JSON.stringify([...commentIds, failedId]));
+    throw err;
+  }
   const id = url.match(/#issuecomment-(\d+)$/)?.[1];
   if (!id) throw new Error(`Cannot identify upload comment: ${url}`);
   commentIds.push(id);
