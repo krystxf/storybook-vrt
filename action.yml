@@ -35,6 +35,14 @@ runs:
   using: 'composite'
   steps:
     # ---- pull_request: build head + base, diff ----
+    - name: Mark check as running
+      if: github.event_name == 'pull_request'
+      shell: bash
+      env:
+        STATUS_TOKEN: ${{ inputs.github-token }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: node "${{ github.action_path }}/scripts/status.mts" pending "Building Storybook and taking screenshots…"
+
     - name: Install screenshot deps
       if: github.event_name == 'pull_request'
       shell: bash
@@ -77,6 +85,8 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.attachment-token }}
+        STATUS_TOKEN: ${{ inputs.github-token }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
       run: node "${{ github.action_path }}/scripts/publish-attachments.mts"
 
@@ -89,6 +99,7 @@ runs:
         overwrite: true
 
     - name: Comment & set status
+      id: evaluate
       if: github.event_name == 'pull_request'
       shell: bash
       env:
@@ -105,6 +116,16 @@ runs:
         GH_TOKEN: ${{ inputs.attachment-token }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
       run: node "${{ github.action_path }}/scripts/publish-attachments.mts" --cleanup
+
+    # Without this, a failed or cancelled run would leave the status pending forever.
+    # Skipped once the report step has set the final status, so a cleanup error cannot overwrite it.
+    - name: Mark check as failed
+      if: (failure() || cancelled()) && github.event_name == 'pull_request' && steps.evaluate.outcome != 'success'
+      shell: bash
+      env:
+        STATUS_TOKEN: ${{ inputs.github-token }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: node "${{ github.action_path }}/scripts/status.mts" error "Visual regression did not finish. Open the run for details."
 
     # ---- issue_comment: re-evaluate the approval gate (no re-screenshot) ----
     - name: Re-evaluate approvals

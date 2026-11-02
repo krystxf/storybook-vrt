@@ -87,6 +87,8 @@ Deleting (or editing out) an approval comment **revokes** it. Added/removed stor
   on `main` before approvals take effect.
 - To make the gate *hard-block* merges, add the **`visual-regression`** status as a required check
   in branch protection (needs GitHub Pro or a public repo for private repositories).
+- While the job runs, the `visual-regression` status is pending and shows progress, such as
+  `Uploading images: batch 2/6`. If the job fails or is cancelled, the status becomes `error`.
 - Create a `VRT_ATTACHMENT_TOKEN` repository secret containing a user PAT with repository push access.
   GitHub App installation tokens, including Actions `GITHUB_TOKEN`, cannot upload attachments.
   The separate `github-token` input still defaults to the normal workflow token for comments and statuses.
