@@ -35,7 +35,9 @@ for (let start = 0; start < files.length; start += 50) {
     if (fs.statSync(file).size > 10 * 1024 * 1024) throw new Error(`Image exceeds GitHub attachment limit: ${file}`);
   }
   const bodyFile = path.join(path.dirname(reportPath), 'attachments.md');
-  fs.writeFileSync(bodyFile, 'Uploading visual regression images…\n\n' + localFiles.map((file, i) => `![vrt-${i}](${file})`).join('\n'));
+  // Collapse the images so the temporary upload comment stays compact in the PR timeline.
+  fs.writeFileSync(bodyFile, `<details><summary>Uploading ${batch.length} visual regression images…</summary>\n\n`
+    + localFiles.map((file, i) => `![vrt-${i}](${file})`).join('\n') + '\n\n</details>');
   const url = cli(['pr', 'comment', pr, '--repo', repo, '--body-file', bodyFile,
     ...localFiles.flatMap(file => ['--attach', file])]).trim();
   const id = url.match(/#issuecomment-(\d+)$/)?.[1];
