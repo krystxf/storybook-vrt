@@ -97,15 +97,6 @@ Deleting (or editing out) an approval comment **revokes** it. Added/removed stor
   repository's artifact retention policy; after expiry, rerun visual regression before approving.
 - Fork PR workflows normally lack the secrets and write permissions required to publish reports.
 
-## Migrating from v1
-
-- Use `krystxf/storybook-vrt@v2` and pass `attachment-token: ${{ secrets.VRT_ATTACHMENT_TOKEN }}`.
-- Remove the `snapshot-branch` input. Change `contents: write` to `contents: read` and add `actions: read`.
-- Merge the updated workflow into the default branch so approval comments use artifact reports.
-- Rerun open PR checks to create reports and attachment URLs, then delete the old `vrt-snapshots`
-  branch (or your configured snapshot branch). Old comments pointing to those snapshots may lose images.
-- Artifacts are retained according to repository settings. Rerun checks if the report has expired.
-
 ## Demo
 
 See the [demo PR](https://github.com/krystxf/storybook-vrt-example/pull/21)
